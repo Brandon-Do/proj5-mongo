@@ -1,60 +1,34 @@
-import os
-from flask import Flask, redirect, url_for, request, render_template
+"""
+Replacement for RUSA ACP brevet time calculator
+(see https://rusa.org/octime_acp.html)
+
+"""
+
 import flask
-from pymongo import MongoClient
-import acp_times
-import arrow
+from flask import request
+import arrow  # Replacement for datetime, based on moment.js
+import acp_times  # Brevet time calculations
+import config
 
-app = Flask(__name__)
+import logging
 
-client = MongoClient(os.environ['DB_PORT_27017_TCP_ADDR'], 27017)
-db = client.tododb
-db.tododb.delete_many({})
+###
+# Globals
+###
+app = flask.Flask(__name__)
+CONFIG = config.configuration()
+app.secret_key = CONFIG.SECRET_KEY
 
-@app.route('/')
-def todo():
-    return render_template('calc.html')
-
-@app.route('/clear',methods=['POST'])
-def clear():
-    db.tododb.delete_many({})
-    return redirect(url_for('todo'))
-
-@app.route('/save', methods=['POST'])
-def new():
-
-    data = {
-        "opens" : request.form.getlist("open"),
-        "close" : request.form.getlist("close"),
-        "km" : request.form.getlist("km"),
-    }
-
-    for key in data.keys():
-        data[key] = list(map(str, data[key]))
-    app.logger.debug(data)
-
-    for i in range(len(data["km"])):
-        result = {"open":data["opens"][i], "close":data["close"][i], "km":data["km"][i]}
-        if result["km"] != "":
-            db.tododb.insert_one(result)
+###
+# Pages
+###
 
 
-    return redirect(url_for('todo'))
-
-@app.route('/show', methods=['POST'])
-def show():
-    data = db.tododb.find()
-    results = []
-    for d in data:
-
-        result = {"km":d["km"], "open":d["open"], "close":d["close"]}
-        results.append(result)
-
-
-    if results == []:
-        app.logger.debug("No data entered to display")
-        return render_template('calc.html')
-    return render_template('todo.html', items=results)
+@app.route("/")
+@app.route("/index")
+def index():
+    app.logger.debug("Main page entry")
+    return flask.render_template('calc.html')
 
 
 @app.errorhandler(404)
@@ -99,10 +73,18 @@ def _calc_times():
     close_time = acp_times.close_time(km, distance, start_arrow)
     result = {"open": open_time, "close": close_time}
 
+    print("open, close")
+    print(open_time, close_time)
+
     return flask.jsonify(result=result)
 
 
 #############
 
+app.debug = CONFIG.DEBUG
+if app.debug:
+    app.logger.setLevel(logging.DEBUG)
+
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', debug=True)
+    print("Opening for global access on port {}".format(CONFIG.PORT))
+    app.run(port=CONFIG.PORT, host="0.0.0.0")
